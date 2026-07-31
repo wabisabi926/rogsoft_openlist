@@ -35,7 +35,8 @@ jobs:
 
       - name: Create GitHub Release
         env:
-          GITHUB_TOKEN: ${{ secrets.GIT_TOKEN }}
+          # 关键修复：gh cli 识别变量名为 GH_TOKEN
+          GH_TOKEN: ${{ secrets.GIT_TOKEN }}
         run: |
           VERSION=${{ env.VER }}
           # 判断同名tag是否存在，避免重复创建失败
