@@ -6,9 +6,8 @@ on:
       - main
 
   schedule:
-    - cron: "0 19 * * *" # 每天 UTC 时间 19:00 (北京时间 3:00~4:15) 触发一次
-
-  workflow_dispatch: # 允许手动触发
+    - cron: "0 19 * * *" # UTC 19:00 = 北京时间凌晨3点
+  workflow_dispatch: # 手动触发
 
 permissions:
   contents: write
@@ -18,39 +17,45 @@ jobs:
     if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     steps:
-      # Step 1: 检出当前仓库代码
       - name: Checkout repository
         uses: actions/checkout@v5
-      # Step 2: 配置 Git
+
       - name: Configure Git
         run: |
           git config --global user.name "${{ secrets.GIT_NAME }}"
           git config --global user.email "${{ secrets.GIT_EMAIL }}"
-      # Step 3: 同步至 Gitee
-      - name: Check Binary Update
+
+      - name: Build & Check Update
         env:
           GIT_TOKEN: ${{ secrets.GIT_TOKEN }}
           BASE_URL: ${{ secrets.BASE_URL }}
-          GITEE_TOKEN: ${{ secrets.GITEE_TOKEN }}
         run: |
           python ./build.py
           VERSION=$(cat ./*/version)
-          git clone https://Genius-Society:$GITEE_TOKEN@gitee.com/Genius-Society/rogsoft_openlist.git ../gitee_repo
-          rm -rf .git
-          cp -rf ../gitee_repo/.git ./
+
+          # 检测本地文件变更
           if [ -n "$(git status --porcelain)" ]; then
-            echo "Files are different, committing changes..."
+            echo "文件存在更新，提交代码"
             git add .
             git commit -m "Upd ver to $VERSION at $(date '+%Y-%m-%d %H:%M:%S')"
             git push
           else
-            diff_days=$(curl -s https://api.github.com/repos/Genius-Society/rogsoft_openlist/releases/latest | python3 -c "import sys,json,datetime;d=json.load(sys.stdin);p=datetime.datetime.strptime(d['published_at'],'%Y-%m-%dT%H:%M:%SZ').replace(tzinfo=datetime.timezone.utc);print((datetime.datetime.now(datetime.timezone.utc)-p).days)")
+            # 获取本仓库最新release时间，修复原仓库名错误
+            diff_days=$(curl -s https://api.github.com/repos/wabisabi926/rogsoft_openlist/releases/latest | python3 -c "
+import sys,json,datetime
+d=json.load(sys.stdin)
+p=datetime.datetime.strptime(d['published_at'],'%Y-%m-%dT%H:%M:%SZ').replace(tzinfo=datetime.timezone.utc)
+now=datetime.datetime.now(datetime.timezone.utc)
+print((now-p).days)
+            ")
+            echo "距离上个Release天数: $diff_days"
+            # 超过58天强制发Release，防止Cron工作流休眠
             if [ "$diff_days" -gt 58 ]; then
               wget --header="Authorization: token $GIT_TOKEN" -P ../ $BASE_URL/release.py
               python ../release.py --ver "$VERSION" --token "$GIT_TOKEN"
-              echo "Avoid 60-day cron sleep: force-release regularly"
+              echo "定时强制发布，避免工作流休眠"
             else
-              echo "Files are the same, no changes."
+              echo "文件无变动，无需操作"
             fi
           fi
 
@@ -58,16 +63,15 @@ jobs:
     if: github.event_name == 'push'
     runs-on: ubuntu-latest
     steps:
-      # Step 1: 检出当前仓库代码
       - name: Checkout repository
         uses: actions/checkout@v5
-      # Step 2: 配置 Git
+
       - name: Configure Git
         run: |
           git config --global user.name "${{ secrets.GIT_NAME }}"
           git config --global user.email "${{ secrets.GIT_EMAIL }}"
-      # Step 3: 发布至 GitHub
-      - name: Update Release
+
+      - name: Build & Create Release
         env:
           GIT_TOKEN: ${{ secrets.GIT_TOKEN }}
           SF_PASS: ${{ secrets.SF_PASS }}
@@ -75,16 +79,21 @@ jobs:
         run: |
           python ./build.py
           VERSION=$(cat ./*/version)
+
           if [ -n "$(git status --porcelain)" ]; then
-            echo "Files are different, committing changes..."
+            echo "检测文件更新，提交代码"
             git add .
             git commit -m "Upd ver to $VERSION at $(date '+%Y-%m-%d %H:%M:%S')"
             git push
           else
-            echo "Files are the same, no changes."
+            echo "文件无变更"
           fi
+
+          # GitHub Release
           wget --header="Authorization: token $GIT_TOKEN" $BASE_URL/release.py
           python ./release.py --ver "$VERSION" --token "$GIT_TOKEN"
+
+          # SourceForge同步
           mkdir v"$VERSION"
           mv openlist.tar.gz ./v"$VERSION"
           sshpass -p "$SF_PASS" rsync -avz -e "ssh -o StrictHostKeyChecking=no" LICENSE README.md v"$VERSION" genius-society@frs.sourceforge.net:/home/frs/project/rogsoft-openlist/
