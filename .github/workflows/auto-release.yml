@@ -37,7 +37,6 @@ jobs:
             git commit -m "Upd ver to $VERSION at $(date '+%Y-%m-%d %H:%M:%S')"
             git push
           else
-            # 获取最近发布间隔
             RAW_URL=https://api.github.com/repos/wabisabi926/rogsoft_openlist/releases/latest
             diff_days=$(curl -s $RAW_URL | python3 -c "import sys,json,datetime;
 try:
@@ -49,7 +48,6 @@ except Exception:
 ")
             echo "距离上个Release天数: $diff_days"
             if [ "$diff_days" -gt 58 ]; then
-              # 直接使用本仓库raw地址，彻底干掉BASE_URL密钥，解决Scheme missing报错
               wget --header="Authorization: token $GIT_TOKEN" https://raw.githubusercontent.com/wabisabi926/rogsoft_openlist/main/release.py
               python ./release.py --ver "$VERSION" --token "$GIT_TOKEN"
               echo "定时强制发布，避免工作流休眠"
@@ -87,7 +85,6 @@ except Exception:
             echo "文件无变更"
           fi
 
-          # 直接拉取本仓库release.py，不再依赖BASE_URL
           wget --header="Authorization: token $GIT_TOKEN" https://raw.githubusercontent.com/wabisabi926/rogsoft_openlist/main/release.py
           python ./release.py --ver "$VERSION" --token "$GIT_TOKEN"
 
