@@ -40,14 +40,8 @@ jobs:
             git commit -m "Upd ver to $VERSION at $(date '+%Y-%m-%d %H:%M:%S')"
             git push
           else
-            # 获取本仓库最新release时间，修复原仓库名错误
-            diff_days=$(curl -s https://api.github.com/repos/wabisabi926/rogsoft_openlist/releases/latest | python3 -c "
-import sys,json,datetime
-d=json.load(sys.stdin)
-p=datetime.datetime.strptime(d['published_at'],'%Y-%m-%dT%H:%M:%SZ').replace(tzinfo=datetime.timezone.utc)
-now=datetime.datetime.now(datetime.timezone.utc)
-print((now-p).days)
-            ")
+            # 获取最新release间隔天数（改用单行python避免yaml语法报错）
+            diff_days=$(curl -s https://api.github.com/repos/wabisabi926/rogsoft_openlist/releases/latest | python3 -c "import sys,json,datetime;d=json.load(sys.stdin);p=datetime.datetime.strptime(d['published_at'],'%Y-%m-%dT%H:%M:%SZ').replace(tzinfo=datetime.timezone.utc);print((datetime.datetime.now(datetime.timezone.utc)-p).days)")
             echo "距离上个Release天数: $diff_days"
             # 超过58天强制发Release，防止Cron工作流休眠
             if [ "$diff_days" -gt 58 ]; then
